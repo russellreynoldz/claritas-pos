@@ -19,10 +19,7 @@ export default function AdminLayout({ username }) {
             <button onClick={()=>setSidebarOpen(true)} className="lg:hidden text-slate-500 hover:text-slate-800">
               <Icon d={IC.menu} size={22}/>
             </button>
-            <div className="hidden sm:block relative">
-              <Icon d={IC.search} size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-              <input placeholder="Search…" className="h-9 pl-9 pr-4 rounded-xl bg-slate-100 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400 w-52 placeholder-slate-400"/>
-            </div>
+           
           </div>
           <div className="flex items-center gap-3">
             

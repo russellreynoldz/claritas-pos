@@ -145,3 +145,131 @@ app.get("/", (req, res) => {
 });
 const port = process.env.PORT || 5000;
 app.listen(port, () => console.log(`API running on http://localhost:${port}`));
+
+app.post("/api/sales", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const {
+      txId,
+      customer,
+      paymentMethod,
+      subtotal,
+      discount,
+      total,
+      cash,
+      change,
+      items,
+    } = req.body;
+
+    for (const item of items) {
+      const [rows] = await conn.query(
+        "SELECT stock FROM items WHERE id = ? FOR UPDATE",
+        [item.id]
+      );
+
+      if (!rows.length) {
+        throw new Error(`Item not found: ${item.name}`);
+      }
+
+      if (rows[0].stock < item.qty) {
+        throw new Error(`Not enough stock for ${item.name}`);
+      }
+    }
+
+    const [saleResult] = await conn.query(
+      `INSERT INTO sales 
+      (tx_id, customer, payment_method, subtotal, discount, total, cash, change_amount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [txId, customer, paymentMethod, subtotal, discount, total, cash, change]
+    );
+
+    const saleId = saleResult.insertId;
+
+    for (const item of items) {
+      await conn.query(
+        `INSERT INTO sale_items 
+        (sale_id, item_id, item_name, sku, qty, price, total)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          saleId,
+          item.id,
+          item.name,
+          item.sku,
+          item.qty,
+          item.price,
+          item.price * item.qty,
+        ]
+      );
+
+      await conn.query(
+        "UPDATE items SET stock = stock - ? WHERE id = ?",
+        [item.qty, item.id]
+      );
+    }
+
+    await conn.commit();
+
+    res.json({
+      message: "Sale completed successfully",
+      saleId,
+      txId,
+    });
+  } catch (err) {
+    await conn.rollback();
+    res.status(400).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.get("/api/sales", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        s.id,
+        s.tx_id,
+        s.customer,
+        s.payment_method,
+        s.subtotal,
+        s.discount,
+        s.total,
+        s.cash,
+        s.change_amount,
+        s.created_at,
+        COUNT(si.id) AS total_items
+      FROM sales s
+      LEFT JOIN sale_items si ON s.id = si.sale_id
+      GROUP BY s.id
+      ORDER BY s.created_at DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/reports/profit-loss", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        COALESCE(SUM(si.total), 0) AS gross_sales,
+        COALESCE(SUM(si.qty * i.cost), 0) AS cost_of_goods,
+        COALESCE(SUM(si.total - (si.qty * i.cost)), 0) AS gross_profit,
+        COALESCE((SELECT SUM(discount) FROM sales), 0) AS total_discount,
+        COALESCE(
+          SUM(si.total - (si.qty * i.cost)) - 
+          (SELECT COALESCE(SUM(discount), 0) FROM sales),
+          0
+        ) AS net_profit
+      FROM sale_items si
+      LEFT JOIN items i ON si.item_id = i.id
+    `);
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

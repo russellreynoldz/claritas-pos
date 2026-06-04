@@ -89,13 +89,32 @@ export default function SalesPage() {
   const change = Math.max(0, cashAmt - grandTotal);
   const canCharge = cart.length > 0 && (payMethod !== "cash" || cashAmt >= grandTotal);
 
-  const handleCharge = () => {
+ const handleCharge = async () => {
+  try {
+    const txId = "#TX-" + String(Math.floor(Math.random() * 9000) + 1000);
+
+    const payload = {
+      txId,
+      customer: customer || "Walk-in",
+      paymentMethod: payMethod,
+      subtotal,
+      discount: discAmt,
+      total: grandTotal,
+      cash: cashAmt,
+      change,
+      items: cart,
+    };
+
+    await apiRequest("/sales", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
     setReceipt({
-      txId: "#TX-" + String(Math.floor(Math.random() * 9000) + 1000),
+      txId,
       items: [...cart],
       subtotal,
       discAmt,
-      taxAmt,
       grandTotal,
       cash: cashAmt,
       change,
@@ -108,7 +127,12 @@ export default function SalesPage() {
     setCash("");
     setDiscount(0);
     setCustomer("");
-  };
+
+    loadItems(); // refresh stock after sale
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
   if (receipt) {
     return (

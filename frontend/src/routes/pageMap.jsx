@@ -15,6 +15,7 @@ import SalesReportPage from "../pages/reports/SalesReportPage";
 import InventoryReportPage from "../pages/reports/InventoryReportPage";
 import ProfitLossPage from "../pages/reports/ProfitLossPage";
 
+
 export const PAGE_MAP = {
   dashboard: DashboardPage,
   "mf-users": UsersPage,
@@ -32,4 +33,7 @@ export const PAGE_MAP = {
   "rpt-sales": SalesReportPage,
   "rpt-inventory": InventoryReportPage,
   "rpt-profit": ProfitLossPage,
+  "inv-stock": () => <StockLevelsPage />,
+  "rpt-sales": () => <SalesReportPage />,
+  "rpt-profit": () => <ProfitLossPage />,
 };
