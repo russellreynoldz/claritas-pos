@@ -3,9 +3,41 @@ import Icon from "./Icon";
 import { IC } from "../data/icons";
 import { NAV } from "../data/nav";
 
-export default function Sidebar({ active, setActive, open, setOpen }) {
+export default function Sidebar({ active, setActive, open, setOpen, role }) {
   const [expanded, setExpanded] = useState({ masterfile: true });
   const toggle = k => setExpanded(p => ({...p, [k]: !p[k]}));
+  const userRole = String(role || "administrator").toLowerCase();
+  console.log("Role =", role);
+  console.log("UserRole =", userRole);
+  const allowedByRole = {
+      administrator: ["dashboard", "masterfile", "transactions", "inventory", "sales", "reports"],
+      admin: ["dashboard", "masterfile", "transactions", "inventory", "sales", "reports"],
+      cashier: ["sales"],
+      inventory: ["masterfile", "transactions", "inventory"],
+  };
+
+
+    const allowedChildrenByRole = {
+      administrator: "all",
+      admin: "all",
+      cashier: [],
+      inventory: ["mf-items", "tx-purchase", "tx-receive", "tx-adjust", "inv-stock", "inv-movement", "inv-valuation"],
+  };
+
+    const filteredNav = NAV
+      .filter((item) => allowedByRole[userRole]?.includes(item.key))
+      .map((item) => {
+        if (!item.children) return item;
+
+        if (allowedChildrenByRole[userRole] === "all") return item;
+
+        return {
+          ...item,
+          children: item.children.filter((child) =>
+            allowedChildrenByRole[userRole]?.includes(child.key)
+          ),
+        };
+  });
 
   return (
     <>
@@ -26,7 +58,7 @@ export default function Sidebar({ active, setActive, open, setOpen }) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-0.5">
-          {NAV.map(item => {
+          {filteredNav.map(item => {
             const hasKids = item.children?.length > 0;
             const isExp   = expanded[item.key];
             const isActive = active === item.key || item.children?.some(c=>c.key===active);
