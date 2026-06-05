@@ -19,8 +19,11 @@ export const NAV = [
   ]},
   { key: "sales",        label: "Sales",        icon: "bag" },
   { key: "reports",      label: "Reports",      icon: "pieChart", children: [
-    { key: "rpt-sales",     label: "Sales Report",     icon: "barChart" },
-    { key: "rpt-inventory", label: "Inventory Report", icon: "layers"   },
-    { key: "rpt-profit",    label: "Profit & Loss",    icon: "dollar"   },
+    { key: "rpt-sales", label: "Sales Report", icon: "barChart" },
+    { key: "rpt-daily-sales", label: "Daily Sales", icon: "bag" },
+    { key: "rpt-weekly-sales", label: "Weekly Sales", icon: "trending" },
+    { key: "rpt-monthly-sales", label: "Monthly Sales", icon: "barChart" },
+    { key: "rpt-inventory", label: "Inventory Report", icon: "layers" },
+    { key: "rpt-profit", label: "Profit & Loss", icon: "dollar" },
   ]},
 ];

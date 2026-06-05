@@ -273,3 +273,136 @@ app.get("/api/reports/profit-loss", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get("/api/reports/sales-summary", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total ELSE 0 END), 0) AS daily_sales,
+
+        COALESCE(SUM(CASE 
+          WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) 
+          THEN total ELSE 0 END), 0) AS weekly_sales,
+
+        COALESCE(SUM(CASE 
+          WHEN YEAR(created_at) = YEAR(CURDATE())
+          AND MONTH(created_at) = MONTH(CURDATE())
+          THEN total ELSE 0 END), 0) AS monthly_sales,
+
+        COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) AS daily_transactions,
+        COUNT(CASE WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN 1 END) AS weekly_transactions,
+        COUNT(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE()) THEN 1 END) AS monthly_transactions
+      FROM sales
+    `);
+
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/reports/sold-items/:period", async (req, res) => {
+  try {
+    const { period } = req.params;
+
+    let dateCondition = "";
+
+    if (period === "daily") {
+      dateCondition = "DATE(s.created_at) = CURDATE()";
+    } else if (period === "weekly") {
+      dateCondition = "YEARWEEK(s.created_at, 1) = YEARWEEK(CURDATE(), 1)";
+    } else if (period === "monthly") {
+      dateCondition = `
+        YEAR(s.created_at) = YEAR(CURDATE())
+        AND MONTH(s.created_at) = MONTH(CURDATE())
+      `;
+    } else {
+      return res.status(400).json({ error: "Invalid report period" });
+    }
+
+    const [rows] = await db.query(`
+      SELECT
+        si.item_id,
+        si.item_name,
+        si.sku,
+        SUM(si.qty) AS total_qty_sold,
+        si.price,
+        SUM(si.total) AS total_sales
+      FROM sale_items si
+      INNER JOIN sales s ON si.sale_id = s.id
+      WHERE ${dateCondition}
+      GROUP BY si.item_id, si.item_name, si.sku, si.price
+      ORDER BY total_qty_sold DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/dashboard", async (req, res) => {
+  try {
+    const [[salesToday]] = await db.query(`
+      SELECT COALESCE(SUM(total), 0) AS total
+      FROM sales
+      WHERE DATE(created_at) = CURDATE()
+    `);
+
+    const [[itemsCount]] = await db.query(`
+      SELECT COUNT(*) AS total
+      FROM items
+    `);
+
+    const [[lowStock]] = await db.query(`
+      SELECT COUNT(*) AS total
+      FROM items
+      WHERE stock < 5
+    `);
+
+    const [[monthlyProfit]] = await db.query(`
+      SELECT
+        COALESCE(SUM(si.total - (si.qty * i.cost)), 0) AS total
+      FROM sale_items si
+      LEFT JOIN sales s ON si.sale_id = s.id
+      LEFT JOIN items i ON si.item_id = i.id
+      WHERE YEAR(s.created_at) = YEAR(CURDATE())
+      AND MONTH(s.created_at) = MONTH(CURDATE())
+    `);
+
+    const [recentSales] = await db.query(`
+      SELECT 
+        id,
+        tx_id,
+        customer,
+        payment_method,
+        total,
+        created_at
+      FROM sales
+      ORDER BY created_at DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      salesToday: salesToday.total,
+      inventoryItems: itemsCount.total,
+      lowStockItems: lowStock.total,
+      monthlyProfit: monthlyProfit.total,
+      recentSales,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/notifications/low-stock", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT id, name, sku, stock, unit
+      FROM items
+      WHERE stock < 5
+      ORDER BY stock ASC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

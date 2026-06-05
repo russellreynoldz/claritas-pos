@@ -46,9 +46,12 @@ export default function Sidebar({ active, setActive, open, setOpen, role }) {
         {/* Logo */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-900/50">
-              <Icon d={IC.home} size={14} className="text-white"/>
-            </div>
+           <img
+                src="/cart.png"
+                alt="Logo"
+                className="w-12 h-12 object-contain"
+              />
+           
             <span className="text-white font-bold text-sm tracking-tight">Clarita's Mini Grocery</span>
           </div>
           <button className="lg:hidden text-slate-400 hover:text-white" onClick={()=>setOpen(false)}>

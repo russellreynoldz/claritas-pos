@@ -52,9 +52,11 @@ export default function LoginPage({ onLogin }) {
       <div className="relative w-full max-w-[400px]">
         <div className="bg-slate-800/60 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-8 shadow-2xl">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-900/50">
-              <Icon d={IC.home} size={18} className="text-white" />
-            </div>
+            <img
+              src="/cart.png"
+              alt="Logo"
+              className="w-20 h-20 object-contain"
+            />
             <div>
               <span className="text-white font-bold text-lg tracking-tight block leading-none">
                 Clarita's Mini Grocery

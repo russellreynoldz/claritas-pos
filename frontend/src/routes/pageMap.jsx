@@ -14,7 +14,7 @@ import SalesPage from "../pages/SalesPage";
 import SalesReportPage from "../pages/reports/SalesReportPage";
 import InventoryReportPage from "../pages/reports/InventoryReportPage";
 import ProfitLossPage from "../pages/reports/ProfitLossPage";
-
+import SoldItemsReportPage from "../pages/reports/SoldItemsReportPage";
 
 export const PAGE_MAP = {
   dashboard: DashboardPage,
@@ -36,4 +36,15 @@ export const PAGE_MAP = {
   "inv-stock": () => <StockLevelsPage />,
   "rpt-sales": () => <SalesReportPage />,
   "rpt-profit": () => <ProfitLossPage />,
+  "rpt-daily-sales": () => (
+  <SoldItemsReportPage period="daily" title="Daily Sales" />
+    ),
+
+    "rpt-weekly-sales": () => (
+      <SoldItemsReportPage period="weekly" title="Weekly Sales" />
+    ),
+
+    "rpt-monthly-sales": () => (
+      <SoldItemsReportPage period="monthly" title="Monthly Sales" />
+    ),
 };
