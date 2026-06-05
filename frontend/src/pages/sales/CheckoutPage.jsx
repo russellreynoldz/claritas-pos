@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import Icon from "../components/Icon";
-import { IC } from "../data/icons";
-import { fmt } from "../utils/format";
-import { apiRequest } from "../services/api";
+import Icon from "../../components/Icon";
+import { IC } from "../../data/icons";
+import { fmt } from "../../utils/format";
+import { apiRequest } from "../../services/api";
 
-export default function SalesPage() {
+export default function CheckoutPage() {
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState("");

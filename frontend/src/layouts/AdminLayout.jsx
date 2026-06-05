@@ -11,7 +11,7 @@ export default function AdminLayout({ username, role, onLogout }) {
 
   const defaultPage =
     userRole === "cashier"
-      ? "sales"
+      ? "sales-checkout"
       : userRole === "inventory"
       ? "mf-items"
       : "dashboard";

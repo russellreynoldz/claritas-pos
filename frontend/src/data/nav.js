@@ -17,7 +17,17 @@ export const NAV = [
     { key: "inv-movement",  label: "Movement Log",  icon: "trending" },
     { key: "inv-valuation", label: "Valuation",     icon: "dollar"   },
   ]},
-  { key: "sales",        label: "Sales",        icon: "bag" },
+  {
+      key: "sales",
+      label: "Sales",
+      icon: "bag",
+      children: [
+        { key: "sales-checkout", label: "Checkout", icon: "cash" },
+        { key: "sales-credit", label: "Credit", icon: "creditCard" },
+        { key: "sales-return", label: "Return Item", icon: "package" },
+        { key: "sales-payment", label: "Payment", icon: "wallet" },
+      ],
+  },
   { key: "reports",      label: "Reports",      icon: "pieChart", children: [
     { key: "rpt-sales", label: "Sales Report", icon: "barChart" },
     { key: "rpt-daily-sales", label: "Daily Sales", icon: "bag" },

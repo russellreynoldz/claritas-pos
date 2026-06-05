@@ -20,7 +20,12 @@ export default function Sidebar({ active, setActive, open, setOpen, role }) {
     const allowedChildrenByRole = {
       administrator: "all",
       admin: "all",
-      cashier: [],
+      cashier: [
+                "sales-checkout",
+                "sales-credit",
+                "sales-return",
+                "sales-payment",
+              ],
       inventory: ["mf-items", "tx-purchase", "tx-receive", "tx-adjust", "inv-stock", "inv-movement", "inv-valuation"],
   };
 

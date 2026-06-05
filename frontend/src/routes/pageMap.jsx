@@ -10,11 +10,15 @@ import AdjustmentsPage from "../pages/transactions/AdjustmentsPage";
 import StockLevelsPage from "../pages/inventory/StockLevelsPage";
 import MovementLogPage from "../pages/inventory/MovementLogPage";
 import ValuationPage from "../pages/inventory/ValuationPage";
-import SalesPage from "../pages/SalesPage";
+import SalesPage from "../pages/sales/CheckoutPage";
 import SalesReportPage from "../pages/reports/SalesReportPage";
 import InventoryReportPage from "../pages/reports/InventoryReportPage";
 import ProfitLossPage from "../pages/reports/ProfitLossPage";
 import SoldItemsReportPage from "../pages/reports/SoldItemsReportPage";
+import CheckoutPage from "../pages/sales/CheckoutPage";
+import CreditPage from "../pages/sales/CreditPage";
+import ReturnItemPage from "../pages/sales/ReturnItemPage";
+import PaymentPage from "../pages/sales/Paymentpage.jsx";
 
 export const PAGE_MAP = {
   dashboard: DashboardPage,
@@ -29,13 +33,16 @@ export const PAGE_MAP = {
   "inv-stock": StockLevelsPage,
   "inv-movement": MovementLogPage,
   "inv-valuation": ValuationPage,
-  sales: SalesPage,
+  "sales-checkout": () => <CheckoutPage />,
+  "sales-credit": () => <CreditPage />,
+  "sales-return": () => <ReturnItemPage />,
   "rpt-sales": SalesReportPage,
   "rpt-inventory": InventoryReportPage,
   "rpt-profit": ProfitLossPage,
   "inv-stock": () => <StockLevelsPage />,
   "rpt-sales": () => <SalesReportPage />,
   "rpt-profit": () => <ProfitLossPage />,
+  "sales-payment": () => <PaymentPage />,
   "rpt-daily-sales": () => (
   <SoldItemsReportPage period="daily" title="Daily Sales" />
     ),
@@ -47,4 +54,5 @@ export const PAGE_MAP = {
     "rpt-monthly-sales": () => (
       <SoldItemsReportPage period="monthly" title="Monthly Sales" />
     ),
+    
 };
