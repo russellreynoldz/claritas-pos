@@ -12,7 +12,7 @@ export default function Sidebar({ active, setActive, open, setOpen, role }) {
   const allowedByRole = {
       administrator: ["dashboard", "masterfile", "transactions", "inventory", "sales", "reports"],
       admin: ["dashboard", "masterfile", "transactions", "inventory", "sales", "reports"],
-      cashier: ["sales"],
+      cashier: ["sales", "reports"],
       inventory: ["masterfile", "transactions", "inventory"],
   };
 
@@ -25,6 +25,7 @@ export default function Sidebar({ active, setActive, open, setOpen, role }) {
                 "sales-credit",
                 "sales-return",
                 "sales-payment",
+                "rpt-daily-sales",
               ],
       inventory: ["mf-items", "tx-purchase", "tx-receive", "tx-adjust", "inv-stock", "inv-movement", "inv-valuation"],
   };

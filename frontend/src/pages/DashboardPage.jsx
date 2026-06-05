@@ -4,6 +4,32 @@ import { IC } from "../data/icons";
 import { apiRequest } from "../services/api";
 import { fmt } from "../utils/format";
 
+const bibleVerses = [
+  {
+    verse: "Trust in the Lord with all your heart and lean not on your own understanding.",
+    ref: "Proverbs 3:5",
+  },
+  {
+    verse: "I can do all things through Christ who strengthens me.",
+    ref: "Philippians 4:13",
+  },
+  {
+    verse: "The Lord is my shepherd; I shall not want.",
+    ref: "Psalm 23:1",
+  },
+  {
+    verse: "Be strong and courageous. Do not be afraid.",
+    ref: "Joshua 1:9",
+  },
+  {
+    verse: "For with God nothing shall be impossible.",
+    ref: "Luke 1:37",
+  },
+];
+
+const dailyVerse =
+  bibleVerses[new Date().getDate() % bibleVerses.length];
+
 export default function DashboardPage() {
   const [data, setData] = useState({
     salesToday: 0,

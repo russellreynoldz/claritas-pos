@@ -303,16 +303,23 @@ app.get("/api/reports/sold-items/:period", async (req, res) => {
   try {
     const { period } = req.params;
 
-    let dateCondition = "";
+    let salesDateCondition = "";
+    let creditDateCondition = "";
 
     if (period === "daily") {
-      dateCondition = "DATE(s.created_at) = CURDATE()";
+      salesDateCondition = "DATE(s.created_at) = CURDATE()";
+      creditDateCondition = "DATE(cs.created_at) = CURDATE()";
     } else if (period === "weekly") {
-      dateCondition = "YEARWEEK(s.created_at, 1) = YEARWEEK(CURDATE(), 1)";
+      salesDateCondition = "YEARWEEK(s.created_at, 1) = YEARWEEK(CURDATE(), 1)";
+      creditDateCondition = "YEARWEEK(cs.created_at, 1) = YEARWEEK(CURDATE(), 1)";
     } else if (period === "monthly") {
-      dateCondition = `
+      salesDateCondition = `
         YEAR(s.created_at) = YEAR(CURDATE())
         AND MONTH(s.created_at) = MONTH(CURDATE())
+      `;
+      creditDateCondition = `
+        YEAR(cs.created_at) = YEAR(CURDATE())
+        AND MONTH(cs.created_at) = MONTH(CURDATE())
       `;
     } else {
       return res.status(400).json({ error: "Invalid report period" });
@@ -320,16 +327,48 @@ app.get("/api/reports/sold-items/:period", async (req, res) => {
 
     const [rows] = await db.query(`
       SELECT
-        si.item_id,
-        si.item_name,
-        si.sku,
-        SUM(si.qty) AS total_qty_sold,
-        si.price,
-        SUM(si.total) AS total_sales
-      FROM sale_items si
-      INNER JOIN sales s ON si.sale_id = s.id
-      WHERE ${dateCondition}
-      GROUP BY si.item_id, si.item_name, si.sku, si.price
+        item_id,
+        item_name,
+        sku,
+        price,
+        SUM(normal_qty) AS normal_qty_sold,
+        SUM(credit_qty) AS credit_qty_sold,
+        SUM(normal_sales) AS normal_sales,
+        SUM(credit_sales) AS credit_sales,
+        SUM(normal_qty + credit_qty) AS total_qty_sold,
+        SUM(normal_sales + credit_sales) AS total_sales
+      FROM (
+        SELECT
+          si.item_id,
+          si.item_name,
+          si.sku,
+          si.price,
+          SUM(si.qty) AS normal_qty,
+          0 AS credit_qty,
+          SUM(si.total) AS normal_sales,
+          0 AS credit_sales
+        FROM sale_items si
+        INNER JOIN sales s ON si.sale_id = s.id
+        WHERE ${salesDateCondition}
+        GROUP BY si.item_id, si.item_name, si.sku, si.price
+
+        UNION ALL
+
+        SELECT
+          csi.item_id,
+          csi.item_name,
+          csi.sku,
+          csi.price,
+          0 AS normal_qty,
+          SUM(csi.qty) AS credit_qty,
+          0 AS normal_sales,
+          SUM(csi.total) AS credit_sales
+        FROM credit_sale_items csi
+        INNER JOIN credit_sales cs ON csi.credit_sale_id = cs.id
+        WHERE ${creditDateCondition}
+        GROUP BY csi.item_id, csi.item_name, csi.sku, csi.price
+      ) combined
+      GROUP BY item_id, item_name, sku, price
       ORDER BY total_qty_sold DESC
     `);
 
@@ -359,7 +398,7 @@ app.get("/api/dashboard", async (req, res) => {
 
     const [[monthlyProfit]] = await db.query(`
       SELECT
-        COALESCE(SUM(si.total - (si.qty * i.cost)), 0) AS total
+      COALESCE(SUM(si.total - (si.qty * i.cost)), 0) AS total
       FROM sale_items si
       LEFT JOIN sales s ON si.sale_id = s.id
       LEFT JOIN items i ON si.item_id = i.id
@@ -402,6 +441,231 @@ app.get("/api/notifications/low-stock", async (req, res) => {
     `);
 
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/customers", async (req, res) => {
+  const [rows] = await db.query("SELECT * FROM customers ORDER BY id DESC");
+  res.json(rows);
+});
+
+app.post("/api/customers", async (req, res) => {
+  const { name, phone, address, status } = req.body;
+
+  await db.query(
+    "INSERT INTO customers (name, phone, address, status) VALUES (?, ?, ?, ?)",
+    [name, phone, address, status || "Active"]
+  );
+
+  res.json({ message: "Customer added" });
+});
+
+app.put("/api/customers/:id", async (req, res) => {
+  const { name, phone, address, status } = req.body;
+
+  await db.query(
+    "UPDATE customers SET name=?, phone=?, address=?, status=? WHERE id=?",
+    [name, phone, address, status, req.params.id]
+  );
+
+  res.json({ message: "Customer updated" });
+});
+
+app.delete("/api/customers/:id", async (req, res) => {
+  await db.query("DELETE FROM customers WHERE id=?", [req.params.id]);
+  res.json({ message: "Customer deleted" });
+});
+app.post("/api/credit-sales", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const { creditNo, customer, total, items } = req.body;
+
+    if (!customer?.id) {
+      throw new Error("Customer is required.");
+    }
+
+    for (const item of items) {
+      const [rows] = await conn.query(
+        "SELECT stock FROM items WHERE id=? FOR UPDATE",
+        [item.id]
+      );
+
+      if (!rows.length) throw new Error(`Item not found: ${item.name}`);
+      if (rows[0].stock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO credit_sales 
+      (
+        credit_no,
+        customer_id,
+        customer_name,
+        total,
+        paid_amount,
+        balance,
+        status
+      )
+      VALUES (?, ?, ?, ?, 0, ?, 'unpaid')`,
+      [
+        creditNo,
+        customer.id,
+        customer.name,
+        total,
+        total
+      ]
+    );
+
+    const creditSaleId = result.insertId;
+
+    for (const item of items) {
+      await conn.query(
+        `INSERT INTO credit_sale_items
+         (credit_sale_id, item_id, item_name, sku, qty, price, total)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          creditSaleId,
+          item.id,
+          item.name,
+          item.sku,
+          item.qty,
+          item.price,
+          item.price * item.qty,
+        ]
+      );
+
+      await conn.query(
+        "UPDATE items SET stock = stock - ? WHERE id = ?",
+        [item.qty, item.id]
+      );
+    }
+
+    await conn.commit();
+
+    res.json({ message: "Credit transaction saved", creditSaleId });
+  } catch (err) {
+    await conn.rollback();
+    res.status(400).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+}); 
+app.get("/api/customers", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM customers ORDER BY id DESC");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/customers", async (req, res) => {
+  try {
+    const { name, phone, address, status } = req.body;
+
+    await db.query(
+      "INSERT INTO customers (name, phone, address, status) VALUES (?, ?, ?, ?)",
+      [name, phone, address, status || "Active"]
+    );
+
+    res.json({ message: "Customer added successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/customers/:id", async (req, res) => {
+  try {
+    const { name, phone, address, status } = req.body;
+
+    await db.query(
+      "UPDATE customers SET name=?, phone=?, address=?, status=? WHERE id=?",
+      [name, phone, address, status || "Active", req.params.id]
+    );
+
+    res.json({ message: "Customer updated successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/customers/:id", async (req, res) => {
+  try {
+    await db.query("DELETE FROM customers WHERE id=?", [req.params.id]);
+    res.json({ message: "Customer deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/credit-sales", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT *
+      FROM credit_sales
+      ORDER BY created_at DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/credit-sales/:id/pay", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const { amount } = req.body;
+    const paymentAmount = Number(amount);
+
+    if (!paymentAmount || paymentAmount <= 0) {
+      throw new Error("Payment amount is required.");
+    }
+
+    const [rows] = await conn.query(
+      "SELECT * FROM credit_sales WHERE id = ? FOR UPDATE",
+      [req.params.id]
+    );
+
+    if (!rows.length) {
+      throw new Error("Credit transaction not found.");
+    }
+
+    const credit = rows[0];
+    const newPaid = Number(credit.paid_amount || 0) + paymentAmount;
+    const newBalance = Math.max(0, Number(credit.total) - newPaid);
+
+    let status = "partially paid";
+    if (newBalance <= 0) status = "fully paid";
+    if (newPaid <= 0) status = "unpaid";
+
+    await conn.query(
+      `UPDATE credit_sales 
+       SET paid_amount = ?, balance = ?, status = ?
+       WHERE id = ?`,
+      [newPaid, newBalance, status, req.params.id]
+    );
+
+    await conn.commit();
+
+    res.json({ message: "Payment saved successfully." });
+  } catch (err) {
+    await conn.rollback();
+    res.status(400).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete("/api/credit-sales/:id", async (req, res) => {
+  try {
+    await db.query("DELETE FROM credit_sales WHERE id = ?", [req.params.id]);
+    res.json({ message: "Credit transaction deleted." });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

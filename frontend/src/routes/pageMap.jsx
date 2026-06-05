@@ -18,7 +18,9 @@ import SoldItemsReportPage from "../pages/reports/SoldItemsReportPage";
 import CheckoutPage from "../pages/sales/CheckoutPage";
 import CreditPage from "../pages/sales/CreditPage";
 import ReturnItemPage from "../pages/sales/ReturnItemPage";
-import PaymentPage from "../pages/sales/Paymentpage.jsx";
+import PaymentPage from "../pages/sales/PaymentPage.jsx";
+import CustomersPage from "../pages/masterfile/CustomersPage";
+
 
 export const PAGE_MAP = {
   dashboard: DashboardPage,
@@ -43,7 +45,9 @@ export const PAGE_MAP = {
   "rpt-sales": () => <SalesReportPage />,
   "rpt-profit": () => <ProfitLossPage />,
   "sales-payment": () => <PaymentPage />,
+  "mf-customers": () => <CustomersPage />,
   "rpt-daily-sales": () => (
+    
   <SoldItemsReportPage period="daily" title="Daily Sales" />
     ),
 

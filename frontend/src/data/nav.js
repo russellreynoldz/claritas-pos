@@ -2,6 +2,7 @@ export const NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "home" },
   { key: "masterfile",   label: "Masterfile",   icon: "file", children: [
     { key: "mf-users",      label: "Users",      icon: "users"    },
+    { key: "mf-customers", label: "Customers", icon: "users" },
     { key: "mf-items",      label: "Items",      icon: "box"      },
     { key: "mf-categories", label: "Categories", icon: "tag"      },
     { key: "mf-suppliers",  label: "Suppliers",  icon: "userCheck"},
