@@ -16,6 +16,7 @@ export default function CheckoutPage() {
   const [customer, setCustomer] = useState("");
   const [loading, setLoading] = useState(false);
 
+
   useEffect(() => {
     loadItems();
   }, []);
@@ -89,9 +90,11 @@ export default function CheckoutPage() {
   const change = Math.max(0, cashAmt - grandTotal);
   const canCharge = cart.length > 0 && (payMethod !== "cash" || cashAmt >= grandTotal);
 
- const handleCharge = async () => {
+const handleCharge = async () => {
   try {
     const txId = "#TX-" + String(Math.floor(Math.random() * 9000) + 1000);
+
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
 
     const payload = {
       txId,
@@ -103,6 +106,7 @@ export default function CheckoutPage() {
       cash: cashAmt,
       change,
       items: cart,
+      cashier_name: user.fullName || user.username || "Cashier",
     };
 
     await apiRequest("/sales", {
@@ -128,8 +132,9 @@ export default function CheckoutPage() {
     setDiscount(0);
     setCustomer("");
 
-    loadItems(); // refresh stock after sale
+    loadItems();
   } catch (err) {
+    console.error(err);
     alert(err.message);
   }
 };

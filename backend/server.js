@@ -150,8 +150,6 @@ app.post("/api/sales", async (req, res) => {
   const conn = await db.getConnection();
 
   try {
-    await conn.beginTransaction();
-
     const {
       txId,
       customer,
@@ -162,37 +160,52 @@ app.post("/api/sales", async (req, res) => {
       cash,
       change,
       items,
+      cashier_name,
     } = req.body;
 
-    for (const item of items) {
-      const [rows] = await conn.query(
-        "SELECT stock FROM items WHERE id = ? FOR UPDATE",
-        [item.id]
-      );
-
-      if (!rows.length) {
-        throw new Error(`Item not found: ${item.name}`);
-      }
-
-      if (rows[0].stock < item.qty) {
-        throw new Error(`Not enough stock for ${item.name}`);
-      }
-    }
+    await conn.beginTransaction();
 
     const [saleResult] = await conn.query(
-      `INSERT INTO sales 
-      (tx_id, customer, payment_method, subtotal, discount, total, cash, change_amount)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [txId, customer, paymentMethod, subtotal, discount, total, cash, change]
+      `
+      INSERT INTO sales 
+      (
+        tx_id,
+        customer,
+        payment_method,
+        subtotal,
+        discount,
+        total,
+        cash,
+        change_amount,
+        cashier_name,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      `,
+      [
+        txId,
+        customer || "Walk-in",
+        paymentMethod || "cash",
+        subtotal || 0,
+        discount || 0,
+        total || 0,
+        cash || 0,
+        change || 0,
+        cashier_name || "Cashier",
+      ]
     );
 
     const saleId = saleResult.insertId;
 
     for (const item of items) {
+      const lineTotal = Number(item.qty) * Number(item.price);
+
       await conn.query(
-        `INSERT INTO sale_items 
-        (sale_id, item_id, item_name, sku, qty, price, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `
+        INSERT INTO sale_items 
+        (sale_id, item_id, item_name, sku, qty, price, total, line_total)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
         [
           saleId,
           item.id,
@@ -200,26 +213,36 @@ app.post("/api/sales", async (req, res) => {
           item.sku,
           item.qty,
           item.price,
-          item.price * item.qty,
+          lineTotal,
+          lineTotal,
         ]
       );
 
       await conn.query(
-        "UPDATE items SET stock = stock - ? WHERE id = ?",
+        `
+        UPDATE items
+        SET stock = stock - ?
+        WHERE id = ?
+        `,
         [item.qty, item.id]
       );
+
     }
 
     await conn.commit();
 
     res.json({
-      message: "Sale completed successfully",
-      saleId,
-      txId,
+      message: "Sale saved successfully",
+      sale_id: saleId,
     });
   } catch (err) {
     await conn.rollback();
-    res.status(400).json({ error: err.message });
+    console.error("SAVE SALE ERROR:", err);
+
+    res.status(500).json({
+      message: "Failed to save sale",
+      error: err.message,
+    });
   } finally {
     conn.release();
   }
@@ -668,5 +691,91 @@ app.delete("/api/credit-sales/:id", async (req, res) => {
     res.json({ message: "Credit transaction deleted." });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/sales/history", async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    const [rows] = await db.query(
+      `
+      SELECT 
+        s.id,
+        CONCAT('TX-', LPAD(s.id, 6, '0')) AS transaction_no,
+        s.total,
+        COALESCE(s.cashier_name, 'N/A') AS cashier_name,
+        s.created_at,
+        DATE_FORMAT(s.created_at, '%h:%i %p') AS time
+      FROM sales s
+      WHERE DATE(s.created_at) = ?
+      ORDER BY s.created_at DESC
+      `,
+      [date]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("CHECKOUT HISTORY ERROR:", err);
+
+    res.status(500).json({
+      message: "Failed to load checkout history",
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/sales/:id/items", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await db.query(
+      `
+      SELECT 
+        si.id,
+        i.name AS item_name,
+        si.qty,
+        si.price,
+        si.line_total
+      FROM sale_items si
+      LEFT JOIN items i ON si.item_id = i.id
+      WHERE si.sale_id = ?
+      `,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to load sale items" });
+  }
+});
+
+app.get("/api/sales/:id/items", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        si.id,
+        si.qty,
+        si.price,
+        si.line_total,
+        COALESCE(i.name, 'Deleted Item') AS item_name
+      FROM sale_items si
+      LEFT JOIN items i ON si.item_id = i.id
+      WHERE si.sale_id = ?
+      ORDER BY si.id ASC
+      `,
+      [id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("SALE ITEMS ERROR:", err);
+    res.status(500).json({
+      message: "Failed to load sale items",
+      error: err.message,
+    });
   }
 });

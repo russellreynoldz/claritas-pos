@@ -27,6 +27,7 @@ export const NAV = [
         { key: "sales-credit", label: "Credit", icon: "creditCard" },
         { key: "sales-return", label: "Return Item", icon: "package" },
         { key: "sales-payment", label: "Payment", icon: "wallet" },
+        { key: "checkout-history", label: "Checkout History", icon: "shoppingCart" },
       ],
   },
   { key: "reports",      label: "Reports",      icon: "pieChart", children: [

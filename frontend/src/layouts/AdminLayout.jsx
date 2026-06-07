@@ -40,6 +40,8 @@ export default function AdminLayout({ username, role, onLogout }) {
     }
   };
 
+ 
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Sidebar
