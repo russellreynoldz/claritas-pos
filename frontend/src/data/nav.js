@@ -4,19 +4,19 @@ export const NAV = [
     { key: "mf-users",      label: "Users",      icon: "users"    },
     { key: "mf-customers", label: "Customers", icon: "users" },
     { key: "mf-items",      label: "Items",      icon: "box"      },
-    { key: "mf-categories", label: "Categories", icon: "tag"      },
-    { key: "mf-suppliers",  label: "Suppliers",  icon: "userCheck"},
-    { key: "mf-warehouse",  label: "Warehouse",  icon: "warehouse"},
+   // { key: "mf-categories", label: "Categories", icon: "tag"      },//
+    //{ key: "mf-suppliers",  label: "Suppliers",  icon: "userCheck"},//
+    //{ key: "mf-warehouse",  label: "Warehouse",  icon: "warehouse"},//
   ]},
   { key: "transactions", label: "Transactions", icon: "receipt", children: [
     { key: "tx-purchase",   label: "Purchase Orders", icon: "cart"    },
     { key: "tx-receive",    label: "Receive Items",   icon: "package" },
-    { key: "tx-adjust",     label: "Adjustments",     icon: "sliders" },
+    { key: "tx-adjust",     label: "Inventory Adjustments",     icon: "sliders" },
   ]},
   { key: "inventory",    label: "Inventory",    icon: "layers", children: [
-    { key: "inv-stock",     label: "Stock Levels",  icon: "barChart" },
-    { key: "inv-movement",  label: "Movement Log",  icon: "trending" },
-    { key: "inv-valuation", label: "Valuation",     icon: "dollar"   },
+    { key: "inv-stock",     label: "Stock",  icon: "barChart" },
+    //{ key: "inv-movement",  label: "Movement Log",  icon: "trending" },//
+    //{ key: "inv-valuation", label: "Valuation",     icon: "dollar"   },//
   ]},
   {
       key: "sales",
@@ -27,7 +27,7 @@ export const NAV = [
         { key: "sales-credit", label: "Credit", icon: "creditCard" },
         { key: "sales-return", label: "Return Item", icon: "package" },
         { key: "sales-payment", label: "Payment", icon: "wallet" },
-        { key: "checkout-history", label: "Checkout History", icon: "shoppingCart" },
+        { key: "checkout-history", label: "Checkout History", icon: "layers" },
       ],
   },
   { key: "reports",      label: "Reports",      icon: "pieChart", children: [

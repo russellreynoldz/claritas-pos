@@ -25,6 +25,7 @@ export default function Sidebar({ active, setActive, open, setOpen, role }) {
                 "sales-credit",
                 "sales-return",
                 "sales-payment",
+                "checkout-history",
                 "rpt-daily-sales",
               ],
       inventory: ["mf-items", "tx-purchase", "tx-receive", "tx-adjust", "inv-stock", "inv-movement", "inv-valuation"],

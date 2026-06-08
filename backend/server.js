@@ -144,6 +144,567 @@ app.get("/", (req, res) => {
   res.send("Backend server is running");
 });
 const port = process.env.PORT || 5000;
+
+// ================= PURCHASE ORDERS =================
+
+app.get("/api/purchase-orders", async (req, res) => {
+  try {
+    const [orders] = await db.query(`
+      SELECT * FROM purchase_orders
+      ORDER BY id DESC
+    `);
+
+    res.json(orders);
+  } catch (err) {
+    console.error("GET PO ERROR:", err);
+    res.status(500).json({ message: "Failed to load purchase orders" });
+  }
+});
+
+app.get("/api/purchase-orders/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [[order]] = await db.query(
+      "SELECT * FROM purchase_orders WHERE id = ?",
+      [id]
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "Purchase order not found" });
+    }
+
+    const [items] = await db.query(
+      "SELECT * FROM purchase_order_items WHERE po_id = ?",
+      [id]
+    );
+
+    res.json({ ...order, items });
+  } catch (err) {
+    console.error("GET PO DETAIL ERROR:", err);
+    res.status(500).json({ message: "Failed to load purchase order" });
+  }
+});
+
+app.post("/api/purchase-orders", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    const {
+      supplier_id,
+      supplier_name,
+      order_date,
+      expected_date,
+      notes,
+      items,
+    } = req.body;
+
+    if (!supplier_id || !supplier_name) {
+      return res.status(400).json({ message: "Supplier is required" });
+    }
+
+    if (!items || !items.length) {
+      return res.status(400).json({ message: "Add at least one item" });
+    }
+
+    await conn.beginTransaction();
+
+    const po_no = "PO-" + Date.now();
+
+    const subtotal = items.reduce(
+      (sum, item) => sum + Number(item.qty) * Number(item.cost),
+      0
+    );
+
+    const [poResult] = await conn.query(
+      `
+      INSERT INTO purchase_orders
+      (po_no, supplier_id, supplier_name, order_date, expected_date, status, subtotal, notes)
+      VALUES (?, ?, ?, ?, ?, 'Pending', ?, ?)
+      `,
+      [
+        po_no,
+        supplier_id,
+        supplier_name,
+        order_date,
+        expected_date || null,
+        subtotal,
+        notes || "",
+      ]
+    );
+
+    const poId = poResult.insertId;
+
+    for (const item of items) {
+      await conn.query(
+        `
+        INSERT INTO purchase_order_items
+        (po_id, item_id, item_name, qty, cost, total)
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          poId,
+          item.item_id,
+          item.item_name,
+          item.qty,
+          item.cost,
+          Number(item.qty) * Number(item.cost),
+        ]
+      );
+    }
+
+    await conn.commit();
+
+    res.json({
+      message: "Purchase order created successfully",
+      id: poId,
+      po_no,
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error("CREATE PO ERROR:", err);
+    res.status(500).json({ message: "Failed to create purchase order" });
+  } finally {
+    conn.release();
+  }
+});
+
+app.put("/api/purchase-orders/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    await db.query(
+      "UPDATE purchase_orders SET status = ? WHERE id = ?",
+      [status, id]
+    );
+
+    res.json({ message: "Status updated successfully" });
+  } catch (err) {
+    console.error("UPDATE PO STATUS ERROR:", err);
+    res.status(500).json({ message: "Failed to update status" });
+  }
+});
+
+app.delete("/api/purchase-orders/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.query("DELETE FROM purchase_orders WHERE id = ?", [id]);
+
+    res.json({ message: "Purchase order deleted successfully" });
+  } catch (err) {
+    console.error("DELETE PO ERROR:", err);
+    res.status(500).json({ message: "Failed to delete purchase order" });
+  }
+});
+
+// ================= SUPPLIERS =================
+
+app.get("/api/suppliers", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT id, name, contact_person, phone, address, status
+      FROM suppliers
+      WHERE status = 'Active'
+      ORDER BY name ASC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET SUPPLIERS ERROR:", err);
+    res.status(500).json({ message: "Failed to load suppliers" });
+  }
+});
+
+// ================= RECEIVING =================
+
+app.get("/api/receivings", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT *
+      FROM receive_orders
+      ORDER BY id DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET RECEIVINGS ERROR:", err);
+    res.status(500).json({ message: "Failed to load receivings" });
+  }
+});
+
+app.get("/api/receivings/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [[receive]] = await db.query(
+      "SELECT * FROM receive_orders WHERE id = ?",
+      [id]
+    );
+
+    if (!receive) {
+      return res.status(404).json({ message: "Receiving not found" });
+    }
+
+    const [items] = await db.query(
+      "SELECT * FROM receive_order_items WHERE receive_id = ?",
+      [id]
+    );
+
+    res.json({ ...receive, items });
+  } catch (err) {
+    console.error("GET RECEIVING DETAIL ERROR:", err);
+    res.status(500).json({ message: "Failed to load receiving details" });
+  }
+});
+
+app.get("/api/purchase-orders/:id/receiving-items", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [[po]] = await db.query(
+      "SELECT * FROM purchase_orders WHERE id = ?",
+      [id]
+    );
+
+    if (!po) {
+      return res.status(404).json({ message: "Purchase order not found" });
+    }
+
+    const [items] = await db.query(
+      `
+      SELECT 
+        poi.id,
+        poi.po_id,
+        poi.item_id,
+        poi.item_name,
+        poi.qty AS ordered_qty,
+        poi.cost,
+        poi.total,
+        COALESCE(SUM(roi.qty_received), 0) AS received_qty,
+        poi.qty - COALESCE(SUM(roi.qty_received), 0) AS remaining_qty
+      FROM purchase_order_items poi
+      LEFT JOIN receive_order_items roi 
+        ON roi.item_id = poi.item_id
+      LEFT JOIN receive_orders ro 
+        ON ro.id = roi.receive_id 
+        AND ro.po_id = poi.po_id
+      WHERE poi.po_id = ?
+      GROUP BY poi.id
+      `,
+      [id]
+    );
+
+    res.json({
+      po,
+      items,
+    });
+  } catch (err) {
+    console.error("GET PO RECEIVING ITEMS ERROR:", err);
+    res.status(500).json({ message: "Failed to load PO items" });
+  }
+});
+
+app.post("/api/receivings", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    const {
+      po_id,
+      po_no,
+      supplier_name,
+      received_date,
+      received_by,
+      notes,
+      items,
+    } = req.body;
+
+    if (!po_id) {
+      return res.status(400).json({ message: "Purchase order is required" });
+    }
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: "No items to receive" });
+    }
+
+    const validItems = items.filter((item) => Number(item.qty_received) > 0);
+
+    if (validItems.length === 0) {
+      return res.status(400).json({ message: "Enter received quantity" });
+    }
+
+    await conn.beginTransaction();
+
+    for (const item of validItems) {
+      const [[poItem]] = await conn.query(
+        `
+        SELECT qty 
+        FROM purchase_order_items
+        WHERE po_id = ? AND item_id = ?
+        `,
+        [po_id, item.item_id]
+      );
+
+      if (!poItem) {
+        throw new Error(`${item.item_name} is not part of this purchase order`);
+      }
+
+      const [[receivedData]] = await conn.query(
+        `
+        SELECT COALESCE(SUM(roi.qty_received), 0) AS received_qty
+        FROM receive_order_items roi
+        JOIN receive_orders ro ON ro.id = roi.receive_id
+        WHERE ro.po_id = ? AND roi.item_id = ?
+        `,
+        [po_id, item.item_id]
+      );
+
+      const alreadyReceived = Number(receivedData.received_qty || 0);
+      const orderedQty = Number(poItem.qty || 0);
+      const newReceived = Number(item.qty_received || 0);
+
+      if (alreadyReceived + newReceived > orderedQty) {
+        throw new Error(
+          `${item.item_name} received quantity is greater than ordered quantity`
+        );
+      }
+    }
+
+    const receive_no = "RR-" + Date.now();
+
+    const total = validItems.reduce(
+      (sum, item) => sum + Number(item.qty_received) * Number(item.cost),
+      0
+    );
+
+    const [receiveResult] = await conn.query(
+      `
+      INSERT INTO receive_orders
+      (receive_no, po_id, po_no, supplier_name, received_date, received_by, notes, total)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        receive_no,
+        po_id,
+        po_no,
+        supplier_name,
+        received_date,
+        received_by || "",
+        notes || "",
+        total,
+      ]
+    );
+
+    const receiveId = receiveResult.insertId;
+
+    for (const item of validItems) {
+      const itemTotal = Number(item.qty_received) * Number(item.cost);
+
+      await conn.query(
+        `
+        INSERT INTO receive_order_items
+        (receive_id, item_id, item_name, qty_received, cost, total)
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          receiveId,
+          item.item_id,
+          item.item_name,
+          item.qty_received,
+          item.cost,
+          itemTotal,
+        ]
+      );
+
+      await conn.query(
+        `
+        UPDATE items
+        SET stock = stock + ?
+        WHERE id = ?
+        `,
+        [item.qty_received, item.item_id]
+      );
+    }
+
+    const [[remainingCheck]] = await conn.query(
+      `
+      SELECT COUNT(*) AS remaining_count
+      FROM (
+        SELECT 
+          poi.item_id,
+          poi.qty - COALESCE(SUM(roi.qty_received), 0) AS remaining_qty
+        FROM purchase_order_items poi
+        LEFT JOIN receive_order_items roi 
+          ON roi.item_id = poi.item_id
+        LEFT JOIN receive_orders ro 
+          ON ro.id = roi.receive_id 
+          AND ro.po_id = poi.po_id
+        WHERE poi.po_id = ?
+        GROUP BY poi.id
+        HAVING remaining_qty > 0
+      ) x
+      `,
+      [po_id]
+    );
+
+    if (Number(remainingCheck.remaining_count) === 0) {
+      await conn.query(
+        "UPDATE purchase_orders SET status = 'Received' WHERE id = ?",
+        [po_id]
+      );
+    } else {
+      await conn.query(
+        "UPDATE purchase_orders SET status = 'Partial' WHERE id = ?",
+        [po_id]
+      );
+    }
+
+    await conn.commit();
+
+    res.json({
+      message: "Items received and inventory updated",
+      receive_no,
+      id: receiveId,
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error("CREATE RECEIVING ERROR:", err);
+    res.status(500).json({
+      message: err.message || "Failed to save receiving",
+    });
+  } finally {
+    conn.release();
+  }
+});
+
+// ================= INVENTORY ADJUSTMENTS =================
+
+app.get("/api/inventory-adjustments", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT *
+      FROM inventory_adjustments
+      ORDER BY id DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("GET ADJUSTMENTS ERROR:", err);
+    res.status(500).json({ message: "Failed to load inventory adjustments" });
+  }
+});
+
+app.post("/api/inventory-adjustments", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    const {
+      item_id,
+      item_name,
+      adjustment_type,
+      quantity,
+      reason,
+      adjusted_by,
+    } = req.body;
+
+    if (!item_id) {
+      return res.status(400).json({ message: "Item is required" });
+    }
+
+    if (!adjustment_type) {
+      return res.status(400).json({ message: "Adjustment type is required" });
+    }
+
+    if (Number(quantity) < 0) {
+      return res.status(400).json({ message: "Quantity cannot be negative" });
+    }
+
+    await conn.beginTransaction();
+
+    const [[item]] = await conn.query(
+      "SELECT id, name, stock FROM items WHERE id = ? FOR UPDATE",
+      [item_id]
+    );
+
+    if (!item) {
+      throw new Error("Item not found");
+    }
+
+    const oldStock = Number(item.stock || 0);
+    let newStock = oldStock;
+
+    if (adjustment_type === "Increase") {
+      newStock = oldStock + Number(quantity);
+    }
+
+    if (adjustment_type === "Decrease") {
+      newStock = oldStock - Number(quantity);
+    }
+
+    if (adjustment_type === "Set") {
+      newStock = Number(quantity);
+    }
+
+    if (newStock < 0) {
+      throw new Error("Stock cannot be less than zero");
+    }
+
+    const adjustmentNo = "ADJ-" + Date.now();
+
+    await conn.query(
+      `
+      INSERT INTO inventory_adjustments
+      (
+        adjustment_no,
+        item_id,
+        item_name,
+        adjustment_type,
+        old_stock,
+        quantity,
+        new_stock,
+        reason,
+        adjusted_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        adjustmentNo,
+        item_id,
+        item_name || item.name,
+        adjustment_type,
+        oldStock,
+        quantity,
+        newStock,
+        reason || "",
+        adjusted_by || "",
+      ]
+    );
+
+    await conn.query(
+      "UPDATE items SET stock = ? WHERE id = ?",
+      [newStock, item_id]
+    );
+
+    await conn.commit();
+
+    res.json({
+      message: "Inventory adjusted successfully",
+      adjustment_no: adjustmentNo,
+      old_stock: oldStock,
+      new_stock: newStock,
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error("CREATE ADJUSTMENT ERROR:", err);
+    res.status(500).json({
+      message: err.message || "Failed to save adjustment",
+    });
+  } finally {
+    conn.release();
+  }
+});
+
 app.listen(port, () => console.log(`API running on http://localhost:${port}`));
 
 app.post("/api/sales", async (req, res) => {
@@ -151,7 +712,6 @@ app.post("/api/sales", async (req, res) => {
 
   try {
     const {
-      txId,
       customer,
       paymentMethod,
       subtotal,
@@ -164,36 +724,50 @@ app.post("/api/sales", async (req, res) => {
     } = req.body;
 
     await conn.beginTransaction();
+    const [lastSale] = await conn.query(`
+      SELECT id
+      FROM sales
+      ORDER BY id DESC
+      LIMIT 1
+    `);
 
+    let txId = "00000001";
+
+    if (lastSale.length > 0) {
+      const nextId = Number(lastSale[0].id) + 1;
+
+      txId =
+        String(nextId).padStart(8, "0");
+    }
     const [saleResult] = await conn.query(
-      `
-      INSERT INTO sales 
-      (
-        tx_id,
-        customer,
-        payment_method,
-        subtotal,
-        discount,
-        total,
-        cash,
-        change_amount,
-        cashier_name,
-        created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      `,
-      [
-        txId,
-        customer || "Walk-in",
-        paymentMethod || "cash",
-        subtotal || 0,
-        discount || 0,
-        total || 0,
-        cash || 0,
-        change || 0,
-        cashier_name || "Cashier",
-      ]
-    );
+        `
+        INSERT INTO sales
+        (
+          tx_id,
+          customer,
+          payment_method,
+          subtotal,
+          discount,
+          total,
+          cash,
+          change_amount,
+          cashier_name,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `,
+        [
+          txId,
+          customer || "Walk-in",
+          paymentMethod || "cash",
+          subtotal || 0,
+          discount || 0,
+          total || 0,
+          cash || 0,
+          change || 0,
+          cashier_name || "Cashier",
+        ]
+      );
 
     const saleId = saleResult.insertId;
 
@@ -234,6 +808,7 @@ app.post("/api/sales", async (req, res) => {
     res.json({
       message: "Sale saved successfully",
       sale_id: saleId,
+      tx_id: txId,
     });
   } catch (err) {
     await conn.rollback();
@@ -499,83 +1074,97 @@ app.delete("/api/customers/:id", async (req, res) => {
   await db.query("DELETE FROM customers WHERE id=?", [req.params.id]);
   res.json({ message: "Customer deleted" });
 });
-app.post("/api/credit-sales", async (req, res) => {
-  const conn = await db.getConnection();
-
+app.get("/api/credit-sales/unpaid", async (req, res) => {
   try {
-    await conn.beginTransaction();
+    const [rows] = await db.query(`
+      SELECT *
+      FROM credit_sales
+      WHERE status != 'paid'
+      ORDER BY created_at DESC
+    `);
 
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to load unpaid credits", error: err.message });
+  }
+});
+
+app.post("/api/credit-sales", async (req, res) => {
+  try {
     const { creditNo, customer, total, items } = req.body;
 
-    if (!customer?.id) {
-      throw new Error("Customer is required.");
-    }
-
-    for (const item of items) {
-      const [rows] = await conn.query(
-        "SELECT stock FROM items WHERE id=? FOR UPDATE",
-        [item.id]
-      );
-
-      if (!rows.length) throw new Error(`Item not found: ${item.name}`);
-      if (rows[0].stock < item.qty) throw new Error(`Not enough stock for ${item.name}`);
-    }
-
-    const [result] = await conn.query(
-      `INSERT INTO credit_sales 
-      (
-        credit_no,
-        customer_id,
-        customer_name,
-        total,
-        paid_amount,
-        balance,
-        status
-      )
-      VALUES (?, ?, ?, ?, 0, ?, 'unpaid')`,
+    const [result] = await db.query(
+      `
+      INSERT INTO credit_sales
+      (credit_no, customer_name, total, status)
+      VALUES (?, ?, ?, 'unpaid')
+      `,
       [
         creditNo,
-        customer.id,
         customer.name,
-        total,
         total
       ]
     );
 
-    const creditSaleId = result.insertId;
+    const creditId = result.insertId;
 
     for (const item of items) {
-      await conn.query(
-        `INSERT INTO credit_sale_items
-         (credit_sale_id, item_id, item_name, sku, qty, price, total)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      await db.query(
+        `
+        INSERT INTO credit_sale_items
+        (credit_sale_id, item_id, item_name, qty, price, total)
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
         [
-          creditSaleId,
+          creditId,
           item.id,
           item.name,
-          item.sku,
           item.qty,
           item.price,
-          item.price * item.qty,
+          item.qty * item.price
         ]
       );
 
-      await conn.query(
-        "UPDATE items SET stock = stock - ? WHERE id = ?",
+      await db.query(
+        `
+        UPDATE items
+        SET stock = stock - ?
+        WHERE id = ?
+        `,
         [item.qty, item.id]
       );
     }
 
-    await conn.commit();
-
-    res.json({ message: "Credit transaction saved", creditSaleId });
+    res.json({
+      message: "Credit sale saved successfully",
+      credit_id: creditId,
+    });
   } catch (err) {
-    await conn.rollback();
-    res.status(400).json({ error: err.message });
-  } finally {
-    conn.release();
+    console.error(err);
+    res.status(500).json({
+      message: "Failed to save credit sale",
+      error: err.message,
+    });
   }
-}); 
+});
+
+app.get("/api/credit-sales/:id/payments", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM credit_payments
+      WHERE credit_sale_id = ?
+      ORDER BY created_at DESC
+      `,
+      [req.params.id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to load payments", error: err.message });
+  }
+});
 app.get("/api/customers", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM customers ORDER BY id DESC");
@@ -623,17 +1212,104 @@ app.delete("/api/customers/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.get("/api/credit-sales", async (req, res) => {
+app.get("/api/credit-sales/unpaid", async (req, res) => {
   try {
     const [rows] = await db.query(`
       SELECT *
       FROM credit_sales
+      WHERE status != 'paid'
       ORDER BY created_at DESC
     `);
 
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: "Failed to load unpaid credits", error: err.message });
+  }
+});
+
+app.post("/api/credit-sales/:id/payment", async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    const { id } = req.params;
+    const { payment_amount, payment_method, received_by } = req.body;
+
+    await conn.beginTransaction();
+
+    const [[credit]] = await conn.query(
+      `SELECT * FROM credit_sales WHERE id = ? FOR UPDATE`,
+      [id]
+    );
+
+    if (!credit) {
+      throw new Error("Credit sale not found");
+    }
+
+    const currentPaid = Number(credit.paid_amount || 0);
+    const total = Number(credit.total || 0);
+    const amount = Number(payment_amount || 0);
+
+    if (amount <= 0) {
+      throw new Error("Payment amount must be greater than zero");
+    }
+
+    if (amount > total - currentPaid) {
+      throw new Error("Payment amount is greater than remaining balance");
+    }
+
+    const newPaid = currentPaid + amount;
+    const newBalance = total - newPaid;
+    const newStatus = newBalance <= 0 ? "paid" : "partial";
+
+    await conn.query(
+      `
+      INSERT INTO credit_payments
+      (credit_sale_id, payment_amount, payment_method, received_by)
+      VALUES (?, ?, ?, ?)
+      `,
+      [id, amount, payment_method || "cash", received_by || "Cashier"]
+    );
+
+    await conn.query(
+      `
+      UPDATE credit_sales
+      SET paid_amount = ?, balance = ?, status = ?
+      WHERE id = ?
+      `,
+      [newPaid, newBalance, newStatus, id]
+    );
+
+    await conn.commit();
+
+    res.json({
+      message: "Payment saved successfully",
+      paid_amount: newPaid,
+      balance: newBalance,
+      status: newStatus,
+    });
+  } catch (err) {
+    await conn.rollback();
+    res.status(500).json({ message: "Failed to save payment", error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.get("/api/credit-sales/:id/payments", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM credit_payments
+      WHERE credit_sale_id = ?
+      ORDER BY created_at DESC
+      `,
+      [req.params.id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to load payments", error: err.message });
   }
 });
 
@@ -701,7 +1377,7 @@ app.get("/api/sales/history", async (req, res) => {
       `
       SELECT 
         s.id,
-        CONCAT('TX-', LPAD(s.id, 6, '0')) AS transaction_no,
+        s.tx_id AS transaction_no,
         s.total,
         COALESCE(s.cashier_name, 'N/A') AS cashier_name,
         s.created_at,
@@ -778,4 +1454,28 @@ app.get("/api/sales/:id/items", async (req, res) => {
       error: err.message,
     });
   }
+app.get("/api/reports/inventory", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        *,
+        CASE
+          WHEN stock <= 0 THEN 'Out of Stock'
+          WHEN stock BETWEEN 1 AND 10 THEN 'Low Stock'
+          WHEN stock BETWEEN 11 AND 50 THEN 'In Stock'
+          ELSE 'High Stock'
+        END AS stock_status
+      FROM items
+      ORDER BY stock ASC, name ASC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("INVENTORY REPORT ERROR:", err);
+    res.status(500).json({
+      message: "Failed to load inventory report",
+      error: err.message,
+    });
+  }
+});
 });

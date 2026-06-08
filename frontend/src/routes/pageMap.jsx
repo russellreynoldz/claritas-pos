@@ -22,6 +22,7 @@ import PaymentPage from "../pages/sales/PaymentPage.jsx";
 import CustomersPage from "../pages/masterfile/CustomersPage";
 import CheckoutHistoryPage from "../pages/sales/CheckoutHistoryPage";
 
+
 export const PAGE_MAP = {
   dashboard: DashboardPage,
   "mf-users": UsersPage,
@@ -47,6 +48,7 @@ export const PAGE_MAP = {
   "sales-payment": () => <PaymentPage />,
   "checkout-history": () => <CheckoutHistoryPage />,
   "mf-customers": () => <CustomersPage />,
+  "purchase-orders": PurchaseOrdersPage,
   "rpt-daily-sales": () => (
     
   <SoldItemsReportPage period="daily" title="Daily Sales" />

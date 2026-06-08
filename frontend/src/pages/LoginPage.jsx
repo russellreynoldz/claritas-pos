@@ -33,8 +33,12 @@ export default function LoginPage({ onLogin }) {
         body: JSON.stringify({ username, password }),
       });
 
+      // SAVE USER INFO
+      localStorage.setItem("user", JSON.stringify(user));
+      
       // IMPORTANT: send the whole user object, including role
       onLogin(user);
+
     } catch (err) {
       setErrors({ password: err.message });
     } finally {

@@ -15,11 +15,44 @@ export default function CheckoutPage() {
   const [receipt, setReceipt] = useState(null);
   const [customer, setCustomer] = useState("");
   const [loading, setLoading] = useState(false);
-
+  const [qtyModal, setQtyModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [manualQty, setManualQty] = useState(1);
+  const [printPreview, setPrintPreview] = useState(false);
+  const loggedUser = JSON.parse(localStorage.getItem("user"));
+  const [scanCode, setScanCode] = useState("");
 
   useEffect(() => {
     loadItems();
   }, []);
+
+  const cashierName =
+  loggedUser?.fullName ||
+  loggedUser?.username ||
+  "Cashier";
+
+  const handleScan = (e) => {
+    if (e.key !== "Enter") return;
+
+    const code = scanCode.trim();
+    if (!code) return;
+
+    const found = items.find(
+      (item) =>
+        String(item.sku) === code ||
+        String(item.barcode) === code ||
+        String(item.qr_code) === code
+    );
+
+    if (!found) {
+      alert("Item not found: " + code);
+      setScanCode("");
+      return;
+    }
+
+    addToCart(found);
+    setScanCode("");
+  };
 
   const loadItems = async () => {
     try {
@@ -39,11 +72,9 @@ export default function CheckoutPage() {
       const q = search.toLowerCase();
       return (
         p.status === "Active" &&
-        (
-          p.name?.toLowerCase().includes(q) ||
+        (p.name?.toLowerCase().includes(q) ||
           p.sku?.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q)
-        )
+          p.category?.toLowerCase().includes(q))
       );
     });
   }, [items, search]);
@@ -56,13 +87,45 @@ export default function CheckoutPage() {
 
       if (ex) {
         if (ex.qty >= Number(p.stock)) return prev;
+
         return prev.map((i) =>
           i.id === p.id ? { ...i, qty: i.qty + 1 } : i
         );
       }
 
-      return [...prev, { ...p, price: Number(p.price), stock: Number(p.stock), qty: 1 }];
+      return [
+        ...prev,
+        {
+          ...p,
+          price: Number(p.price),
+          stock: Number(p.stock),
+          qty: 1,
+        },
+      ];
     });
+  };
+
+  const openQtyModal = (item) => {
+    setSelectedItem(item);
+    setManualQty(item.qty);
+    setQtyModal(true);
+  };
+
+  const confirmManualQty = () => {
+    if (!selectedItem) return;
+
+    const qty = Math.max(
+      1,
+      Math.min(Number(manualQty) || 1, Number(selectedItem.stock))
+    );
+
+    setCart((prev) =>
+      prev.map((i) => (i.id === selectedItem.id ? { ...i, qty } : i))
+    );
+
+    setQtyModal(false);
+    setSelectedItem(null);
+    setManualQty(1);
   };
 
   const updateQty = (id, d) =>
@@ -79,65 +142,64 @@ export default function CheckoutPage() {
   const removeItem = (id) => setCart((prev) => prev.filter((i) => i.id !== id));
 
   const subtotal = cart.reduce((s, i) => s + Number(i.price) * i.qty, 0);
+
   const discAmt =
     discType === "percent"
       ? subtotal * (Number(discount) / 100)
       : Math.min(Number(discount) || 0, subtotal);
-  const afterDisc = Math.max(0, subtotal - discAmt);
-  const taxAmt = afterDisc;
-  const grandTotal = afterDisc;
+
+  const grandTotal = Math.max(0, subtotal - discAmt);
   const cashAmt = Number(cash) || 0;
   const change = Math.max(0, cashAmt - grandTotal);
-  const canCharge = cart.length > 0 && (payMethod !== "cash" || cashAmt >= grandTotal);
 
-const handleCharge = async () => {
-  try {
-    const txId = "#TX-" + String(Math.floor(Math.random() * 9000) + 1000);
+  const canCharge =
+    cart.length > 0 && (payMethod !== "cash" || cashAmt >= grandTotal);
 
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const handleCharge = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      console.log("Logged User:", user);
+      const payload = {
+        customer: customer || "Walk-in",
+        paymentMethod: payMethod,
+        subtotal,
+        discount: discAmt,
+        total: grandTotal,
+        cash: cashAmt,
+        change,
+        items: cart,
+        cashier_name:
+          user.fullName
+      };
 
-    const payload = {
-      txId,
-      customer: customer || "Walk-in",
-      paymentMethod: payMethod,
-      subtotal,
-      discount: discAmt,
-      total: grandTotal,
-      cash: cashAmt,
-      change,
-      items: cart,
-      cashier_name: user.fullName || user.username || "Cashier",
-    };
+      const result = await apiRequest("/sales", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
 
-    await apiRequest("/sales", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+      setReceipt({
+        txId: result.tx_id,
+        items: [...cart],
+        subtotal,
+        discAmt,
+        grandTotal,
+        cash: cashAmt,
+        change,
+        payMethod,
+        customer: customer || "Walk-in",
+        date: new Date().toLocaleString("en-PH"),
+      });
 
-    setReceipt({
-      txId,
-      items: [...cart],
-      subtotal,
-      discAmt,
-      grandTotal,
-      cash: cashAmt,
-      change,
-      payMethod,
-      customer: customer || "Walk-in",
-      date: new Date().toLocaleString("en-PH"),
-    });
-
-    setCart([]);
-    setCash("");
-    setDiscount(0);
-    setCustomer("");
-
-    loadItems();
-  } catch (err) {
-    console.error(err);
-    alert(err.message);
-  }
-};
+      setCart([]);
+      setCash("");
+      setDiscount(0);
+      setCustomer("");
+      loadItems();
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
+  };
 
   if (receipt) {
     return (
@@ -155,18 +217,24 @@ const handleCharge = async () => {
           <div className="px-6 py-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-400">Customer</span>
-              <span className="font-semibold text-slate-700">{receipt.customer}</span>
+              <span className="font-semibold text-slate-700">
+                {receipt.customer}
+              </span>
             </div>
 
             <div className="flex justify-between">
               <span className="text-slate-400">Payment</span>
-              <span className="font-semibold text-slate-700 capitalize">{receipt.payMethod}</span>
+              <span className="font-semibold text-slate-700 capitalize">
+                {receipt.payMethod}
+              </span>
             </div>
 
             <div className="border-t border-dashed border-slate-200 pt-2 space-y-1.5">
               {receipt.items.map((item) => (
                 <div key={item.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-slate-600 truncate">{item.name}</span>
+                  <span className="flex-1 text-slate-600 truncate">
+                    {item.name}
+                  </span>
                   <span className="text-slate-400 text-xs">×{item.qty}</span>
                   <span className="font-semibold text-slate-700">
                     {fmt(Number(item.price) * item.qty)}
@@ -188,14 +256,11 @@ const handleCharge = async () => {
                 </div>
               )}
 
-              <div className="flex justify-between text-slate-400 text-xs">
-                <span>VAT (12%)</span>
-                <span>{fmt(receipt.taxAmt)}</span>
-              </div>
-
               <div className="flex justify-between font-bold text-slate-800 text-base border-t border-slate-200 pt-2">
                 <span>Total</span>
-                <span className="text-emerald-600">{fmt(receipt.grandTotal)}</span>
+                <span className="text-emerald-600">
+                  {fmt(receipt.grandTotal)}
+                </span>
               </div>
 
               {receipt.payMethod === "cash" && (
@@ -211,10 +276,90 @@ const handleCharge = async () => {
                 </>
               )}
             </div>
+            {printPreview && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div className="bg-white w-full max-w-sm rounded-xl shadow-lg p-5">
+                <div id="checkout-print-area" className="text-sm">
+                  <h2 className="text-center text-lg font-bold">Clarita's Mini Grocery</h2>
+                  <p className="text-center text-slate-500">Official Receipt</p>
+
+                  <hr className="my-3" />
+
+                  <p><b>Transaction:</b> {receipt.txId}</p>
+                  <p><b>Date:</b> {receipt.date}</p>
+                  <p><b>Customer:</b> {receipt.customer}</p>
+                  <p><b>Payment:</b> {receipt.payMethod}</p>
+
+                  <hr className="my-3" />
+
+                  {receipt.items.map((item) => (
+                    <div key={item.id} className="flex justify-between gap-2">
+                      <span>{item.name} x {item.qty}</span>
+                      <span>{fmt(Number(item.price) * item.qty)}</span>
+                    </div>
+                  ))}
+
+                  <hr className="my-3" />
+
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{fmt(receipt.subtotal)}</span>
+                  </div>
+
+                  {receipt.discAmt > 0 && (
+                    <div className="flex justify-between">
+                      <span>Discount</span>
+                      <span>-{fmt(receipt.discAmt)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total</span>
+                    <span>{fmt(receipt.grandTotal)}</span>
+                  </div>
+
+                  {receipt.payMethod === "cash" && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Cash</span>
+                        <span>{fmt(receipt.cash)}</span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>Change</span>
+                        <span>{fmt(receipt.change)}</span>
+                      </div>
+                    </>
+                  )}
+
+                  <p className="text-center mt-5">Thank you!</p>
+                </div>
+
+                <div className="flex gap-3 mt-5 no-print">
+                  <button
+                    onClick={() => setPrintPreview(false)}
+                    className="flex-1 h-10 rounded-xl bg-slate-200 hover:bg-slate-300 font-semibold"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={() => window.print()}
+                    className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                  >
+                    Print Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
 
           <div className="flex gap-3 px-6 pb-5">
-            <button className="flex-1 h-10 rounded-xl border-2 border-slate-200 text-slate-600 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-slate-50">
+            <button
+              onClick={() => setPrintPreview(true)}
+              className="flex-1 h-10 rounded-xl border-2 border-slate-200 text-slate-600 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-slate-50"
+            >
               <Icon d={IC.printer} size={14} /> Print
             </button>
 
@@ -233,20 +378,25 @@ const handleCharge = async () => {
   return (
     <div className="flex gap-4" style={{ height: "calc(100vh - 112px)" }}>
       <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col min-w-0 overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
-          <div className="relative flex-1">
-            <Icon
-              d={IC.search}
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+        <div className="flex gap-3 mb-4">
+
+          <div className="relative w-72">
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search item, SKU, or category…"
-              className="w-full h-9 pl-9 pr-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={handleScan}
+              placeholder="Scan barcode / QR code..."
+              className="w-full h-9 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              autoFocus
             />
           </div>
+
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search item..."
+            className="flex-1 border rounded-lg px-3 py-2"
+          />
         </div>
 
         <div className="flex-1 overflow-auto">
@@ -280,11 +430,10 @@ const handleCharge = async () => {
                   const inCart = cart.find((i) => i.id === item.id);
 
                   return (
-                    <tr key={item.id} className="hover:bg-emerald-50/40 transition-colors">
+                    <tr key={item.id} className="hover:bg-emerald-50/40">
                       <td className="px-5 py-3 font-mono text-xs text-slate-500">
                         {item.sku}
                       </td>
-
                       <td className="px-5 py-3 font-semibold text-slate-800">
                         {item.name}
                         {inCart && (
@@ -293,33 +442,16 @@ const handleCharge = async () => {
                           </span>
                         )}
                       </td>
-
                       <td className="px-5 py-3 text-slate-500">{item.category}</td>
-
                       <td className="px-5 py-3 font-semibold text-emerald-700">
                         {fmt(Number(item.price))}
                       </td>
-
-                      <td className="px-5 py-3">
-                        <span
-                          className={`font-bold ${
-                            Number(item.stock) <= 5
-                              ? "text-red-500"
-                              : Number(item.stock) <= 15
-                              ? "text-amber-500"
-                              : "text-slate-700"
-                          }`}
-                        >
-                          {item.stock}
-                        </span>
-                        <span className="text-slate-400 text-xs ml-1">{item.unit}</span>
-                      </td>
-
+                      <td className="px-5 py-3">{item.stock}</td>
                       <td className="px-5 py-3">
                         <button
                           onClick={() => addToCart(item)}
                           disabled={Number(item.stock) <= 0}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-40"
                         >
                           Add
                         </button>
@@ -372,8 +504,12 @@ const handleCharge = async () => {
               {cart.map((item) => (
                 <div key={item.id} className="flex items-center gap-2 px-4 py-2.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-700 truncate">{item.name}</p>
-                    <p className="text-xs text-slate-400">{fmt(Number(item.price))}</p>
+                    <p className="text-xs font-bold text-slate-700 truncate">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {fmt(Number(item.price))}
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
@@ -384,9 +520,13 @@ const handleCharge = async () => {
                       <Icon d={IC.minus} size={11} />
                     </button>
 
-                    <span className="w-6 text-center text-sm font-bold text-slate-700">
+                    <button
+                      onClick={() => openQtyModal(item)}
+                      className="w-8 h-7 text-center text-sm font-bold text-slate-700 hover:bg-emerald-50 rounded-lg"
+                      title="Click to edit quantity"
+                    >
                       {item.qty}
-                    </span>
+                    </button>
 
                     <button
                       onClick={() => updateQty(item.id, 1)}
@@ -451,7 +591,6 @@ const handleCharge = async () => {
               </div>
             )}
 
-
             <div className="flex justify-between font-bold text-slate-800 text-sm pt-1 border-t border-slate-200">
               <span>Total</span>
               <span className="text-emerald-600">{fmt(grandTotal)}</span>
@@ -462,12 +601,12 @@ const handleCharge = async () => {
             {[
               ["cash", "Cash", "cash"],
               ["card", "Card", "creditCard"],
-              ["qr", "QR", "qr"],
+              ["gcash", "GCash", "qr"],
             ].map(([k, lbl, ico]) => (
               <button
                 key={k}
                 onClick={() => setPayMethod(k)}
-                className={`flex flex-col items-center gap-1 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                className={`flex flex-col items-center gap-1 py-2 rounded-xl border-2 text-xs font-bold ${
                   payMethod === k
                     ? "border-emerald-500 bg-emerald-50 text-emerald-700"
                     : "border-slate-200 text-slate-400 hover:border-slate-300"
@@ -500,19 +639,35 @@ const handleCharge = async () => {
                   <span>{fmt(change)}</span>
                 </div>
               )}
+            </div>
+          )}
 
-              {cashAmt > 0 && cashAmt < grandTotal && (
-                <p className="text-xs text-red-500 mt-1.5 font-semibold">
-                  Short by {fmt(grandTotal - cashAmt)}
-                </p>
-              )}
+          {payMethod === "gcash" && (
+            <div className="bg-slate-50 rounded-xl p-4 text-center">
+              <h3 className="font-bold text-lg text-emerald-700">
+                GCash / InstaPay Payment
+              </h3>
+
+              <div className="flex justify-center my-4">
+                <img
+                  src="/images/gcash-qr.jpg"
+                  alt="GCash QR"
+                  className="w-64 h-64 object-contain border rounded-xl"
+                />
+              </div>
+
+              <p className="text-slate-500">Amount to Pay</p>
+
+              <p className="text-3xl font-bold text-emerald-700">
+                {fmt(grandTotal)}
+              </p>
             </div>
           )}
 
           <button
             onClick={handleCharge}
             disabled={!canCharge}
-            className="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Icon d={IC.check} size={17} />
             {payMethod === "cash"
@@ -521,6 +676,70 @@ const handleCharge = async () => {
           </button>
         </div>
       </div>
+
+      {qtyModal && selectedItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6">
+            <h2 className="text-lg font-bold text-slate-800 mb-1">
+              Edit Quantity
+            </h2>
+
+            <p className="text-sm text-slate-500 mb-4">
+              {selectedItem.name} — Stock: {selectedItem.stock}
+            </p>
+
+            <input
+              type="number"
+              min="1"
+              max={selectedItem.stock}
+              value={manualQty}
+              onChange={(e) => setManualQty(e.target.value)}
+              className="w-full h-11 px-3 border rounded-xl text-center font-bold outline-none focus:border-emerald-500"
+              autoFocus
+            />
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setQtyModal(false)}
+                className="flex-1 h-10 rounded-xl bg-slate-200 hover:bg-slate-300 font-semibold"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmManualQty}
+                className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <style>
+      {`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+
+          #checkout-print-area, #checkout-print-area * {
+            visibility: visible;
+          }
+
+          #checkout-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 20px;
+          }
+          .no-print {
+            display: none;
+          }
+        }
+      `}
+    </style>
     </div>
   );
 }

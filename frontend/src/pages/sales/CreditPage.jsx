@@ -15,6 +15,11 @@ export default function CreditPage() {
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scanCode, setScanCode] = useState("");
+
+  const [qtyModal, setQtyModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [manualQty, setManualQty] = useState(1);
 
   useEffect(() => {
     loadData();
@@ -54,7 +59,11 @@ export default function CreditPage() {
   }, [items, search]);
 
   const addToCart = (item) => {
-    if (!selectedCustomer) return;
+    if (!selectedCustomer) {
+      alert("Please select customer first.");
+      return;
+    }
+
     if (Number(item.stock) <= 0) return;
 
     setCart((prev) => {
@@ -80,6 +89,35 @@ export default function CreditPage() {
     });
   };
 
+  const handleScan = (e) => {
+    if (e.key !== "Enter") return;
+
+    if (!selectedCustomer) {
+      alert("Please select customer first.");
+      setScanCode("");
+      return;
+    }
+
+    const code = scanCode.trim();
+    if (!code) return;
+
+    const found = items.find(
+      (item) =>
+        String(item.sku) === code ||
+        String(item.barcode) === code ||
+        String(item.qr_code) === code
+    );
+
+    if (!found) {
+      alert("Item not found: " + code);
+      setScanCode("");
+      return;
+    }
+
+    addToCart(found);
+    setScanCode("");
+  };
+
   const updateQty = (id, change) => {
     setCart((prev) =>
       prev
@@ -96,6 +134,31 @@ export default function CreditPage() {
         )
         .filter((item) => item.qty > 0)
     );
+  };
+
+  const openQtyModal = (item) => {
+    setSelectedItem(item);
+    setManualQty(item.qty);
+    setQtyModal(true);
+  };
+
+  const confirmManualQty = () => {
+    if (!selectedItem) return;
+
+    const qty = Math.max(
+      1,
+      Math.min(Number(manualQty) || 1, Number(selectedItem.stock))
+    );
+
+    setCart((prev) =>
+      prev.map((item) =>
+        item.id === selectedItem.id ? { ...item, qty } : item
+      )
+    );
+
+    setQtyModal(false);
+    setSelectedItem(null);
+    setManualQty(1);
   };
 
   const removeItem = (id) => {
@@ -134,6 +197,7 @@ export default function CreditPage() {
       setSelectedCustomer(null);
       setCustomerSearch("");
       setSearch("");
+      setScanCode("");
 
       await loadData();
     } catch (err) {
@@ -145,23 +209,23 @@ export default function CreditPage() {
 
   return (
     <div className="flex gap-4" style={{ height: "calc(100vh - 112px)" }}>
-      {/* Item Table */}
       <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col min-w-0 overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
-          <div className="relative flex-1">
-            <Icon
-              d={IC.search}
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+        <div className="flex gap-3 p-4 border-b border-slate-100">
+          <input
+            value={scanCode}
+            onChange={(e) => setScanCode(e.target.value)}
+            onKeyDown={handleScan}
+            placeholder="Scan barcode / QR code..."
+            className="w-72 h-9 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            autoFocus
+          />
 
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search item, SKU, or category..."
-              className="w-full h-9 pl-9 pr-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-            />
-          </div>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search item..."
+            className="flex-1 h-9 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+          />
         </div>
 
         {!selectedCustomer && (
@@ -176,9 +240,7 @@ export default function CreditPage() {
               <tr className="text-xs text-slate-400 uppercase tracking-wider">
                 <th className="px-5 py-3 text-left font-semibold">SKU</th>
                 <th className="px-5 py-3 text-left font-semibold">Item</th>
-                <th className="px-5 py-3 text-left font-semibold">
-                  Category
-                </th>
+                <th className="px-5 py-3 text-left font-semibold">Category</th>
                 <th className="px-5 py-3 text-left font-semibold">Price</th>
                 <th className="px-5 py-3 text-left font-semibold">Stock</th>
                 <th className="px-5 py-3 text-left font-semibold">Action</th>
@@ -186,83 +248,75 @@ export default function CreditPage() {
             </thead>
 
             <tbody className="divide-y divide-slate-50">
-              {filteredItems.map((item) => {
-                const inCart = cart.find((x) => x.id === item.id);
-
-                return (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-emerald-50/40 transition-colors"
-                  >
-                    <td className="px-5 py-3 font-mono text-xs text-slate-500">
-                      {item.sku}
-                    </td>
-
-                    <td className="px-5 py-3 font-semibold text-slate-800">
-                      {item.name}
-                      {inCart && (
-                        <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                          In cart: {inCart.qty}
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="px-5 py-3 text-slate-500">
-                      {item.category}
-                    </td>
-
-                    <td className="px-5 py-3 font-semibold text-emerald-700">
-                      {fmt(Number(item.price))}
-                    </td>
-
-                    <td className="px-5 py-3">
-                      <span
-                        className={`font-bold ${
-                          Number(item.stock) <= 5
-                            ? "text-red-500"
-                            : Number(item.stock) <= 15
-                            ? "text-amber-500"
-                            : "text-slate-700"
-                        }`}
-                      >
-                        {item.stock}
-                      </span>
-                      <span className="text-slate-400 text-xs ml-1">
-                        {item.unit}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-3">
-                      <button
-                        onClick={() => addToCart(item)}
-                        disabled={!selectedCustomer || Number(item.stock) <= 0}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        Add
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {filteredItems.length === 0 && (
+              {filteredItems.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-5 py-12 text-center text-slate-400"
-                  >
+                  <td colSpan={6} className="px-5 py-12 text-center text-slate-400">
                     No items found.
                   </td>
                 </tr>
+              ) : (
+                filteredItems.map((item) => {
+                  const inCart = cart.find((x) => x.id === item.id);
+
+                  return (
+                    <tr key={item.id} className="hover:bg-emerald-50/40 transition-colors">
+                      <td className="px-5 py-3 font-mono text-xs text-slate-500">
+                        {item.sku}
+                      </td>
+
+                      <td className="px-5 py-3 font-semibold text-slate-800">
+                        {item.name}
+                        {inCart && (
+                          <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                            In cart: {inCart.qty}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-3 text-slate-500">
+                        {item.category}
+                      </td>
+
+                      <td className="px-5 py-3 font-semibold text-emerald-700">
+                        {fmt(Number(item.price))}
+                      </td>
+
+                      <td className="px-5 py-3">
+                        <span
+                          className={`font-bold ${
+                            Number(item.stock) <= 5
+                              ? "text-red-500"
+                              : Number(item.stock) <= 15
+                              ? "text-amber-500"
+                              : "text-slate-700"
+                          }`}
+                        >
+                          {item.stock}
+                        </span>
+                        <span className="text-slate-400 text-xs ml-1">
+                          {item.unit}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-3">
+                        <button
+                          onClick={() => addToCart(item)}
+                          disabled={!selectedCustomer || Number(item.stock) <= 0}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Add
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Credit Cart */}
       <div className="w-80 flex flex-col gap-3 shrink-0">
-        {/* Customer Autocomplete */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-3 relative">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
             Customer
@@ -317,12 +371,10 @@ export default function CreditPage() {
           )}
         </div>
 
-        {/* Order */}
         <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
             <h3 className="font-bold text-slate-800 text-sm">
-              Credit Order ({cart.reduce((sum, item) => sum + item.qty, 0)}{" "}
-              items)
+              Credit Order ({cart.reduce((sum, item) => sum + item.qty, 0)} items)
             </h3>
 
             {cart.length > 0 && (
@@ -343,10 +395,7 @@ export default function CreditPage() {
           ) : (
             <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
               {cart.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-2 px-4 py-2.5"
-                >
+                <div key={item.id} className="flex items-center gap-2 px-4 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-700 truncate">
                       {item.name}
@@ -364,9 +413,13 @@ export default function CreditPage() {
                       <Icon d={IC.minus} size={11} />
                     </button>
 
-                    <span className="w-6 text-center text-sm font-bold text-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => openQtyModal(item)}
+                      className="w-8 h-7 text-center text-sm font-bold text-slate-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                    >
                       {item.qty}
-                    </span>
+                    </button>
 
                     <button
                       onClick={() => updateQty(item.id, 1)}
@@ -393,7 +446,6 @@ export default function CreditPage() {
           )}
         </div>
 
-        {/* Total + Save */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
           <div className="bg-slate-50 rounded-xl px-3 py-3 space-y-1.5 text-xs">
             <div className="flex justify-between font-bold text-slate-800 text-sm">
@@ -412,6 +464,46 @@ export default function CreditPage() {
           </button>
         </div>
       </div>
+
+      {qtyModal && selectedItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-6">
+            <h2 className="text-lg font-bold text-slate-800 mb-1">
+              Edit Quantity
+            </h2>
+
+            <p className="text-sm text-slate-500 mb-4">
+              {selectedItem.name} — Stock: {selectedItem.stock}
+            </p>
+
+            <input
+              type="number"
+              min="1"
+              max={selectedItem.stock}
+              value={manualQty}
+              onChange={(e) => setManualQty(e.target.value)}
+              className="w-full h-11 px-3 border rounded-xl text-center font-bold outline-none focus:border-emerald-500"
+              autoFocus
+            />
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setQtyModal(false)}
+                className="flex-1 h-10 rounded-xl bg-slate-200 hover:bg-slate-300 font-semibold"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmManualQty}
+                className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
