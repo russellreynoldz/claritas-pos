@@ -6,6 +6,7 @@ import { IC } from "../data/icons";
 import { PAGE_MAP } from "../routes/pageMap";
 import { apiRequest } from "../services/api";
 
+
 export default function AdminLayout({ username, role, onLogout }) {
   const userRole = String(role || "administrator").toLowerCase();
 
@@ -16,7 +17,9 @@ export default function AdminLayout({ username, role, onLogout }) {
       ? "mf-items"
       : "dashboard";
 
-  const [active, setActive] = useState(defaultPage);
+  const [active, setActive] = useState(
+    localStorage.getItem("activePage") || "dashboard"
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -29,6 +32,12 @@ export default function AdminLayout({ username, role, onLogout }) {
   useEffect(() => {
     loadLowStock();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("activePage", active);
+  }, [active]);
+
+
 
   const loadLowStock = async () => {
     try {
