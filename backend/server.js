@@ -10,11 +10,13 @@ const app = express();
 //app.use(cors());//
 
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://your-vercel-app.vercel.app"
-  ],
-  credentials: true
+  //origin: [
+    //"http://localhost:5173",
+    //"https://claritas-pos.vercel.app"
+  //],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 
