@@ -7,7 +7,17 @@ import bcrypt from "bcryptjs";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+//app.use(cors());//
+
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://your-vercel-app.vercel.app"
+  ],
+  credentials: true
+}));
+
+
 app.use(express.json());
 
 const db = await mysql.createPool({

@@ -1,4 +1,4 @@
-const API_URL = "http://192.168.1.8:5000/api";
+const API_URL = "http://192.168.0.106:5000/api";
 
 export async function apiRequest(path, options = {}) {
   const res = await fetch(`${API_URL}${path}`, {
