@@ -212,19 +212,35 @@ export default function CreditPage() {
       <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col min-w-0 overflow-hidden">
         <div className="flex gap-3 p-4 border-b border-slate-100">
           <input
-            value={scanCode}
-            onChange={(e) => setScanCode(e.target.value)}
-            onKeyDown={handleScan}
-            placeholder="Scan barcode / QR code..."
-            className="w-72 h-9 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            autoFocus
-          />
-
-          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search item..."
-            className="flex-1 h-9 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+
+              const code = search.trim();
+              if (!code) return;
+
+              const found = items.find((item) => {
+                const values = [
+                  item.sku,
+                  item.barcode,
+                  item.qr_code,
+                  item.qrcode,
+                  item.item_code,
+                  item.code,
+                ];
+
+                return values.some((v) => String(v || "").trim() === code);
+              });
+
+              if (found) {
+                addToCart(found);
+                setSearch("");
+              }
+            }}
+            placeholder="Search item or scan barcode / QR code..."
+            className="w-full h-10 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            autoFocus
           />
         </div>
 

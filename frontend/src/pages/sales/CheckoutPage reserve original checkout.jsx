@@ -19,10 +19,40 @@ export default function CheckoutPage() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [manualQty, setManualQty] = useState(1);
   const [printPreview, setPrintPreview] = useState(false);
+  const loggedUser = JSON.parse(localStorage.getItem("user"));
+  const [scanCode, setScanCode] = useState("");
 
   useEffect(() => {
     loadItems();
   }, []);
+
+  const cashierName =
+  loggedUser?.fullName ||
+  loggedUser?.username ||
+  "Cashier";
+
+  const handleScan = (e) => {
+    if (e.key !== "Enter") return;
+
+    const code = scanCode.trim();
+    if (!code) return;
+
+    const found = items.find(
+      (item) =>
+        String(item.sku) === code ||
+        String(item.barcode) === code ||
+        String(item.qr_code) === code
+    );
+
+    if (!found) {
+      alert("Item not found: " + code);
+      setScanCode("");
+      return;
+    }
+
+    addToCart(found);
+    setScanCode("");
+  };
 
   const loadItems = async () => {
     try {
@@ -36,6 +66,18 @@ export default function CheckoutPage() {
       setLoading(false);
     }
   };
+
+  const filtered = useMemo(() => {
+    return items.filter((p) => {
+      const q = search.toLowerCase();
+      return (
+        p.status === "Active" &&
+        (p.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          p.category?.toLowerCase().includes(q))
+      );
+    });
+  }, [items, search]);
 
   const addToCart = (p) => {
     if (Number(p.stock) <= 0) return;
@@ -62,54 +104,6 @@ export default function CheckoutPage() {
       ];
     });
   };
-
-  const handleSearchOrScan = (e) => {
-    if (e.key !== "Enter") return;
-
-    const code = search.trim();
-    if (!code) return;
-
-    const found = items.find((item) => {
-      const values = [
-        item.sku,
-        item.barcode,
-        item.qr_code,
-        item.qrcode,
-        item.item_code,
-        item.code,
-      ];
-
-      return values.some(
-        (v) => String(v || "").trim().toLowerCase() === code.toLowerCase()
-      );
-    });
-
-    if (found) {
-      addToCart(found);
-      setSearch("");
-      return;
-    }
-
-    alert("Item not found: " + code);
-  };
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-
-    return items.filter((p) => {
-      return (
-        p.status === "Active" &&
-        (p.name?.toLowerCase().includes(q) ||
-          p.sku?.toLowerCase().includes(q) ||
-          p.barcode?.toLowerCase().includes(q) ||
-          p.qr_code?.toLowerCase().includes(q) ||
-          p.qrcode?.toLowerCase().includes(q) ||
-          p.item_code?.toLowerCase().includes(q) ||
-          p.code?.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q))
-      );
-    });
-  }, [items, search]);
 
   const openQtyModal = (item) => {
     setSelectedItem(item);
@@ -164,7 +158,7 @@ export default function CheckoutPage() {
   const handleCharge = async () => {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-
+      console.log("Logged User:", user);
       const payload = {
         customer: customer || "Walk-in",
         paymentMethod: payMethod,
@@ -175,11 +169,7 @@ export default function CheckoutPage() {
         change,
         items: cart,
         cashier_name:
-          user.fullName ||
-          user.full_name ||
-          user.name ||
-          user.username ||
-          "Cashier",
+          user.fullName
       };
 
       const result = await apiRequest("/sales", {
@@ -286,98 +276,83 @@ export default function CheckoutPage() {
                 </>
               )}
             </div>
-
             {printPreview && (
-              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                <div className="bg-white w-full max-w-sm rounded-xl shadow-lg p-5">
-                  <div id="checkout-print-area" className="text-sm">
-                    <h2 className="text-center text-lg font-bold">
-                      Clarita's Mini Grocery
-                    </h2>
-                    <p className="text-center text-slate-500">
-                      Official Receipt
-                    </p>
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div className="bg-white w-full max-w-sm rounded-xl shadow-lg p-5">
+                <div id="checkout-print-area" className="text-sm">
+                  <h2 className="text-center text-lg font-bold">Clarita's Mini Grocery</h2>
+                  <p className="text-center text-slate-500">Official Receipt</p>
 
-                    <hr className="my-3" />
+                  <hr className="my-3" />
 
-                    <p>
-                      <b>Transaction:</b> {receipt.txId}
-                    </p>
-                    <p>
-                      <b>Date:</b> {receipt.date}
-                    </p>
-                    <p>
-                      <b>Customer:</b> {receipt.customer}
-                    </p>
-                    <p>
-                      <b>Payment:</b> {receipt.payMethod}
-                    </p>
+                  <p><b>Transaction:</b> {receipt.txId}</p>
+                  <p><b>Date:</b> {receipt.date}</p>
+                  <p><b>Customer:</b> {receipt.customer}</p>
+                  <p><b>Payment:</b> {receipt.payMethod}</p>
 
-                    <hr className="my-3" />
+                  <hr className="my-3" />
 
-                    {receipt.items.map((item) => (
-                      <div key={item.id} className="flex justify-between gap-2">
-                        <span>
-                          {item.name} x {item.qty}
-                        </span>
-                        <span>{fmt(Number(item.price) * item.qty)}</span>
-                      </div>
-                    ))}
+                  {receipt.items.map((item) => (
+                    <div key={item.id} className="flex justify-between gap-2">
+                      <span>{item.name} x {item.qty}</span>
+                      <span>{fmt(Number(item.price) * item.qty)}</span>
+                    </div>
+                  ))}
 
-                    <hr className="my-3" />
+                  <hr className="my-3" />
 
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{fmt(receipt.subtotal)}</span>
+                  </div>
+
+                  {receipt.discAmt > 0 && (
                     <div className="flex justify-between">
-                      <span>Subtotal</span>
-                      <span>{fmt(receipt.subtotal)}</span>
+                      <span>Discount</span>
+                      <span>-{fmt(receipt.discAmt)}</span>
                     </div>
+                  )}
 
-                    {receipt.discAmt > 0 && (
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total</span>
+                    <span>{fmt(receipt.grandTotal)}</span>
+                  </div>
+
+                  {receipt.payMethod === "cash" && (
+                    <>
                       <div className="flex justify-between">
-                        <span>Discount</span>
-                        <span>-{fmt(receipt.discAmt)}</span>
+                        <span>Cash</span>
+                        <span>{fmt(receipt.cash)}</span>
                       </div>
-                    )}
 
-                    <div className="flex justify-between font-bold text-lg">
-                      <span>Total</span>
-                      <span>{fmt(receipt.grandTotal)}</span>
-                    </div>
+                      <div className="flex justify-between">
+                        <span>Change</span>
+                        <span>{fmt(receipt.change)}</span>
+                      </div>
+                    </>
+                  )}
 
-                    {receipt.payMethod === "cash" && (
-                      <>
-                        <div className="flex justify-between">
-                          <span>Cash</span>
-                          <span>{fmt(receipt.cash)}</span>
-                        </div>
+                  <p className="text-center mt-5">Thank you!</p>
+                </div>
 
-                        <div className="flex justify-between">
-                          <span>Change</span>
-                          <span>{fmt(receipt.change)}</span>
-                        </div>
-                      </>
-                    )}
+                <div className="flex gap-3 mt-5 no-print">
+                  <button
+                    onClick={() => setPrintPreview(false)}
+                    className="flex-1 h-10 rounded-xl bg-slate-200 hover:bg-slate-300 font-semibold"
+                  >
+                    Cancel
+                  </button>
 
-                    <p className="text-center mt-5">Thank you!</p>
-                  </div>
-
-                  <div className="flex gap-3 mt-5 no-print">
-                    <button
-                      onClick={() => setPrintPreview(false)}
-                      className="flex-1 h-10 rounded-xl bg-slate-200 hover:bg-slate-300 font-semibold"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      onClick={() => window.print()}
-                      className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
-                    >
-                      Print Now
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => window.print()}
+                    className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                  >
+                    Print Now
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
           </div>
 
           <div className="flex gap-3 px-6 pb-5">
@@ -395,32 +370,6 @@ export default function CheckoutPage() {
               <Icon d={IC.plus} size={14} /> New Sale
             </button>
           </div>
-
-          <style>
-            {`
-              @media print {
-                body * {
-                  visibility: hidden;
-                }
-
-                #checkout-print-area, #checkout-print-area * {
-                  visibility: visible;
-                }
-
-                #checkout-print-area {
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100%;
-                  padding: 20px;
-                }
-
-                .no-print {
-                  display: none;
-                }
-              }
-            `}
-          </style>
         </div>
       </div>
     );
@@ -430,13 +379,23 @@ export default function CheckoutPage() {
     <div className="flex gap-4" style={{ height: "calc(100vh - 112px)" }}>
       <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col min-w-0 overflow-hidden">
         <div className="flex gap-3 mb-4">
+
+          <div className="relative w-72">
+            <input
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              onKeyDown={handleScan}
+              placeholder="Scan barcode / QR code..."
+              className="w-full h-9 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              autoFocus
+            />
+          </div>
+
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={handleSearchOrScan}
-            placeholder="Search item or scan barcode / QR code..."
-            className="w-full h-10 px-3 text-sm bg-emerald-50 border border-emerald-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-            autoFocus
+            placeholder="Search item..."
+            className="flex-1 border rounded-lg px-3 py-2"
           />
         </div>
 
@@ -622,9 +581,7 @@ export default function CheckoutPage() {
           <div className="bg-slate-50 rounded-xl px-3 py-3 space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-500">
               <span>Subtotal</span>
-              <span className="font-semibold text-slate-700">
-                {fmt(subtotal)}
-              </span>
+              <span className="font-semibold text-slate-700">{fmt(subtotal)}</span>
             </div>
 
             {discAmt > 0 && (
@@ -759,32 +716,30 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
-
       <style>
-        {`
-          @media print {
-            body * {
-              visibility: hidden;
-            }
-
-            #checkout-print-area, #checkout-print-area * {
-              visibility: visible;
-            }
-
-            #checkout-print-area {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-              padding: 20px;
-            }
-
-            .no-print {
-              display: none;
-            }
+      {`
+        @media print {
+          body * {
+            visibility: hidden;
           }
-        `}
-      </style>
+
+          #checkout-print-area, #checkout-print-area * {
+            visibility: visible;
+          }
+
+          #checkout-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 20px;
+          }
+          .no-print {
+            display: none;
+          }
+        }
+      `}
+    </style>
     </div>
   );
 }
